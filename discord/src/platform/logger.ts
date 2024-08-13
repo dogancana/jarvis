@@ -1,23 +1,40 @@
-import winston from "winston";
+import { createLogger, format, transports } from "winston";
+import { omit } from "lodash";
 
-export const logger = winston.createLogger({
+const myFormat = format.printf(({ level, message, ...metadata }) => {
+  let msg = `[${level}] : ${message} `;
+  try {
+    if (metadata) {
+      const omitted = omit(metadata, ["level", "message", "timestamp"]);
+      const extra = `\n${JSON.stringify(
+        omitted,
+        (_, value) => (typeof value === "bigint" ? value.toString() : value),
+        2
+      )}`;
+      if (extra.replaceAll(" ", "") === "\n{}") return msg;
+      return msg + extra;
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  return msg;
+});
+
+const defaultFormat = format.combine(
+  format.splat(),
+  myFormat,
+  format.colorize()
+);
+
+export const logger = createLogger({
   level: "info",
-  format: winston.format.json(),
-  defaultMeta: { service: "jarvis-discord" },
+  format: defaultFormat,
   transports: [
-    new winston.transports.File({ filename: "logs/error.log", level: "error" }),
-    new winston.transports.File({ filename: "logs/combined.log" }),
+    new transports.File({ filename: "logs/error.log", level: "error" }),
+    new transports.File({ filename: "logs/combined.log" }),
   ],
 });
 
-//
-// If we're not in production then log to the `console` with the format:
-// `${info.level}: ${info.message} JSON.stringify({ ...rest }) `
-//
 if (process.env.NODE_ENV !== "production") {
-  logger.add(
-    new winston.transports.Console({
-      format: winston.format.simple(),
-    })
-  );
+  logger.add(new transports.Console({ format: defaultFormat }));
 }
