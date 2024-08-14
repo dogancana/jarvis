@@ -1,18 +1,16 @@
 import { EndBehaviorType, VoiceReceiver } from "@discordjs/voice";
-import type { User } from "discord.js";
+import fs from "fs";
 import { createWriteStream } from "node:fs";
 import { pipeline, Writable } from "node:stream";
 import * as prism from "prism-media";
-import { logger } from "../platform";
-import fs from "fs";
 
 const BYTE_MIN_LIMIT = 7000;
 const BYTE_MAX_LIMIT = 200000;
 
 export function createListeningStream(
   receiver: VoiceReceiver,
+  guildId: string,
   userId: string,
-  user?: User,
 ) {
   const opusStream = receiver.subscribe(userId, {
     end: {
@@ -29,11 +27,7 @@ export function createListeningStream(
     pageSizeControl: { maxPackets: 10 },
   });
 
-  const filename = `./recordings/${Date.now()}-${getDisplayName(
-    userId,
-    user,
-  )}.ogg`;
-
+  const filename = `./recordings/${Date.now()}-${guildId}_${userId}.ogg`;
   const out = createWriteStream(filename);
 
   // Custom writable stream to monitor bytes written
@@ -50,9 +44,7 @@ export function createListeningStream(
     },
   });
 
-  logger.info(`Started recording`, { filename });
-
-  return new Promise<string>((resolve, reject) => {
+  return new Promise<string | undefined>((resolve, reject) => {
     pipeline(
       opusStream,
       oggStream as any,
@@ -60,13 +52,13 @@ export function createListeningStream(
       (error: unknown) => {
         if (error) return reject(error);
 
-        if (out.bytesWritten < BYTE_MIN_LIMIT) fs.unlink(filename, () => {});
-        else resolve(filename);
+        if (out.bytesWritten < BYTE_MIN_LIMIT) {
+          fs.unlink(filename, () => {});
+          resolve(undefined);
+        } else {
+          resolve(filename);
+        }
       },
     );
   });
-}
-
-function getDisplayName(userId: string, user?: User) {
-  return user ? `${user.username}_${user.discriminator}` : userId;
 }

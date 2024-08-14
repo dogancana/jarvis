@@ -16,7 +16,7 @@ if (process.env.NODE_ENV !== "production") {
   logger.add(
     new transports.Console({
       format: format.combine(formatFactory({ space: 2 }), defaultFormat),
-    })
+    }),
   );
 }
 
@@ -28,10 +28,10 @@ function formatFactory(config?: { space?: number }) {
     try {
       if (metadata) {
         const omitted = omit(metadata, ["level", "message", "timestamp"]);
-        const extra = `\n${JSON.stringify(
+        const extra = `\t${JSON.stringify(
           omitted,
           (_, value) => (typeof value === "bigint" ? value.toString() : value),
-          space
+          space,
         )}`;
         if (extra.replaceAll(" ", "") === "\n{}") return msg;
         return msg + extra;

@@ -1,4 +1,10 @@
+# Basic Files
 node_modules/
 dist/
 logs/
 .envrc
+
+# Generated files
+*.log
+recordings/*.ogg
+conversations/*.json

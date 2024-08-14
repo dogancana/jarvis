@@ -29,3 +29,13 @@ export function deleteFilesWithExtension(directory: string, extension: string) {
     });
   });
 }
+
+export function writeFileContent(filePath: string, content: string) {
+  fs.writeFile(filePath, content, (err) => {
+    if (err) {
+      console.error("Error writing file:", err);
+    } else {
+      console.log("File updated:", filePath);
+    }
+  });
+}
