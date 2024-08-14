@@ -1,10 +1,16 @@
-import { Client, Events } from "discord.js";
-import { deployCommands } from "./deploy-commands";
+import { generateDependencyReport } from "@discordjs/voice";
+import { Client, Events, GatewayIntentBits } from "discord.js";
 import { commands } from "./commands";
+import { deployCommands } from "./deploy-commands";
 import { config, logger } from "./platform";
+import { clearRecordings } from "./utils/recordings";
+
+clearRecordings();
+
+logger.info("Starting Jarvis...", generateDependencyReport());
 
 const client = new Client({
-  intents: ["Guilds", "GuildMessages", "DirectMessages"],
+  intents: [GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages, GatewayIntentBits.Guilds],
 });
 
 client.once(Events.ClientReady, () => {
