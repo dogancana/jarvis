@@ -6,23 +6,29 @@ import {
   StreamType,
   VoiceConnection,
 } from "@discordjs/voice";
-import { VoiceBasedChannel } from "discord.js";
+import { Events, VoiceBasedChannel } from "discord.js";
 import { logger } from "../platform";
 import { audioFileToText, textToSpeech } from "../services/deepgram";
 import { completion } from "../services/openai";
-import { createListeningStream } from "../utils/listening";
 import { writeFileContent } from "../utils/files";
+import { createListeningStream } from "../utils/listening";
+
+interface Member {
+  id: string;
+  name: string;
+  isBot: boolean;
+}
 
 const player = createAudioPlayer({
   behaviors: {
     noSubscriber: NoSubscriberBehavior.Play,
-    maxMissedFrames: 10,
+    maxMissedFrames: 20,
   },
 });
 
 interface ConversationMessage {
   text: string;
-  user: string;
+  user: Member;
   timestamp: number;
 }
 
@@ -32,6 +38,7 @@ export class VoiceChannelOrchestrator {
   private listeningTo = new Set<string>();
   private conversation: ConversationMessage[] = [];
   private completionInProgress = false;
+  private members: Member[] = [];
 
   constructor(private channel: VoiceBasedChannel) {
     this.connection = joinVoiceChannel({
@@ -43,6 +50,8 @@ export class VoiceChannelOrchestrator {
     });
     process.on("SIGINT", () => this.destroy());
     process.on("SIGTERM", () => this.destroy());
+
+    this.subscribeToChannelState();
   }
 
   public listen() {
@@ -88,9 +97,10 @@ export class VoiceChannelOrchestrator {
     const transcript = results.channels?.[0]?.alternatives?.[0]?.transcript;
     if (!transcript) return;
 
+    const userObj = this.members.find((member) => member.id === user);
     const message: ConversationMessage = {
       text: transcript,
-      user,
+      user: userObj ?? { id: user, name: "Unknown", isBot: false },
       timestamp: Date.now(),
     };
     logger.info("Adding conversation message", { message: message.text });
@@ -155,6 +165,19 @@ export class VoiceChannelOrchestrator {
       console.error(e);
       logger.error(e);
     }
+  }
+
+  private subscribeToChannelState() {
+    this.channel.client.on(Events.VoiceStateUpdate, async (_, newState) => {
+      if (newState.channelId !== this.channel.id) return;
+      const members = newState.channel?.members;
+      const users = members?.map((member) => ({
+        id: member.user.id,
+        name: member.nickname || member.user.globalName || member.user.username,
+        isBot: member.user.bot,
+      }));
+      this.members = users ?? [];
+    });
   }
 
   private destroy() {

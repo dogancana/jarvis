@@ -1,4 +1,3 @@
-import { joinVoiceChannel } from "@discordjs/voice";
 import {
   CommandInteraction,
   GuildMember,
@@ -18,23 +17,13 @@ async function execute(interaction: CommandInteraction) {
   const voiceChannel = guildMember?.voice.channel;
 
   if (!voiceChannel)
-    return interaction.reply("You must be in a voice channel.");
+    return interaction.followUp("You must be in a voice channel.");
 
-  const connection = joinVoiceChannel({
-    selfDeaf: false,
-    selfMute: false,
-    channelId: voiceChannel.id,
-    guildId: voiceChannel.guild.id,
-    adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-  });
-  process.on("SIGINT", () => connection.destroy());
-  process.on("SIGTERM", () => connection.destroy());
-
+  const orchestrator = mustGetOrchestrator(voiceChannel);
   await interaction.followUp(
     "Joined voice channel! Will start listening shortly.",
   );
 
-  const orchestrator = mustGetOrchestrator(voiceChannel);
   try {
     orchestrator.listen();
   } catch (error) {

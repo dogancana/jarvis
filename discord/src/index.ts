@@ -10,7 +10,11 @@ clearRecordings();
 logger.info("Starting Jarvis...", generateDependencyReport());
 
 const client = new Client({
-  intents: [GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages, GatewayIntentBits.Guilds],
+  intents: [
+    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.Guilds,
+  ],
 });
 
 client.once(Events.ClientReady, () => {
@@ -23,7 +27,11 @@ client.on(Events.GuildCreate, async (guild) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
-  logger.info(`Received interaction`, interaction);
+  logger.info(`Received interaction`, {
+    guild: interaction.guild?.name ?? interaction.guildId,
+    user: interaction.user.username,
+    command: interaction.isCommand() ? interaction.commandName : null,
+  });
 
   if (!interaction.isCommand() || !interaction.guildId) return;
 
