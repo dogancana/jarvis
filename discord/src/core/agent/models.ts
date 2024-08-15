@@ -17,6 +17,7 @@ export interface ConversationMessage {
 }
 
 export interface NewCompletionEventPayload {
+  language: string | undefined;
   messageParam: OpenAI.ChatCompletionMessage;
   conversation: ConversationMessage[];
 }

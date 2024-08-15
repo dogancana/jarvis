@@ -54,7 +54,7 @@ export class VoiceChannelOrchestrator {
       const receiver = this.connection.receiver;
 
       receiver.speaking.on("start", async (userId) => {
-        logger.info("User started speaking", {
+        logger.debug("User started speaking", {
           userId,
           listeningTo: !!this.listeningTo.get(userId),
         });
@@ -76,7 +76,7 @@ export class VoiceChannelOrchestrator {
       });
 
       this.connection.on("stateChange", async (_, newState) => {
-        logger.info(`Connection state changed to ${newState.status}`);
+        logger.debug(`Connection state changed to ${newState.status}`);
       });
     } catch (error) {
       this.connection.destroy();
@@ -90,10 +90,10 @@ export class VoiceChannelOrchestrator {
     userId: string,
     error?: unknown,
   ) {
-    logger.info("Finished writing audio file", { filename, error });
+    logger.debug("Finished writing audio file", { filename, error });
 
     if (self.bytesWritten < BYTE_MIN_LIMIT) {
-      logger.info("Audio file too short", { filename });
+      logger.debug("Audio file too short", { filename });
     } else {
       await this.addConversationMessage(filename, userId);
       await this.completionCycle();
@@ -123,6 +123,10 @@ export class VoiceChannelOrchestrator {
       return;
     }
 
+    logger.info("Adding user message to conversation", {
+      name: user.name,
+      text: transcript,
+    });
     this.agent.addUserMessage(transcript, {
       id: user.id,
       name: user.name,
@@ -145,12 +149,12 @@ export class VoiceChannelOrchestrator {
 
   private subscribeToAgent() {
     this.agent.subscribe(AgentEvent.NewCompletion, async (payload) => {
-      const { messageParam } = payload;
+      const { messageParam, language } = payload;
       const text = messageParam?.content;
       if (!text) return;
 
-      logger.info("Talking", { text });
-      talk(text, this.connection);
+      logger.info("Talking", { text, language });
+      talk(text, language ?? "en-US", this.connection);
     });
   }
 

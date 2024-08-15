@@ -7,4 +7,5 @@ logs/
 # Generated files
 *.log
 recordings/*.ogg
+recordings/*.mp3
 conversations/*.json

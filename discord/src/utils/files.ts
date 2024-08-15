@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { logger } from "../platform";
 
 /**
  * Deletes all files with the specified extension in a directory
@@ -9,7 +10,7 @@ import path from "path";
 export function deleteFilesWithExtension(directory: string, extension: string) {
   fs.readdir(directory, (err, files) => {
     if (err) {
-      console.error("Error reading directory:", err);
+      logger.error("Error reading directory:", { err });
       return;
     }
 
@@ -20,9 +21,9 @@ export function deleteFilesWithExtension(directory: string, extension: string) {
       if (fileExtension === extension) {
         fs.unlink(filePath, (err) => {
           if (err) {
-            console.error("Error deleting file:", err);
+            logger.error("Error deleting file:", { err });
           } else {
-            console.log("File deleted:", filePath);
+            logger.log("File deleted:", { filePath });
           }
         });
       }
@@ -32,10 +33,6 @@ export function deleteFilesWithExtension(directory: string, extension: string) {
 
 export function writeFileContent(filePath: string, content: string) {
   fs.writeFile(filePath, content, (err) => {
-    if (err) {
-      console.error("Error writing file:", err);
-    } else {
-      console.log("File updated:", filePath);
-    }
+    if (err) logger.error("Error writing file:", { err });
   });
 }

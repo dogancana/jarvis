@@ -31,7 +31,7 @@ export class Agent {
       messageParam: {
         role: "user",
         content: text,
-        name: `${user.name} (${user.id})`,
+        name: `${user.name}_${user.id}`,
       },
     });
   }
@@ -50,12 +50,12 @@ export class Agent {
       const response = await openai.chat.completions.create({
         model,
         messages: this.prepareConversation(),
-        temperature: 0,
+        temperature: 0.5,
         max_tokens: 1000,
         stream: false,
       });
 
-      const tmp = format(new Date(), "YYYY-MM-dd_HH");
+      const tmp = format(new Date(), "yyyy-MM-dd_HH");
       writeFileContent(
         `./conversations/${tmp}_${this.id}.json`,
         JSON.stringify(this.conversation, null, 2),
@@ -65,10 +65,23 @@ export class Agent {
       if (!messageParam) return;
       this.conversation.push({ timestamp: new Date(), messageParam });
 
+      if (messageParam.content === "!silent") {
+        logger.info("Silent response");
+        return;
+      }
+
+      const { strippedText, language } = cleanUpLanguage(
+        messageParam.content ?? "",
+      );
       const payload: NewCompletionEventPayload = {
-        messageParam,
+        messageParam: {
+          ...messageParam,
+          content: strippedText,
+        },
+        language,
         conversation: this.conversation,
       };
+
       this.publisher.publish(AgentEvent.NewCompletion, payload);
     } catch (e) {
       logger.error("Completion error", e);
@@ -93,7 +106,21 @@ export class Agent {
   private getSystemPrompt(): OpenAI.ChatCompletionSystemMessageParam {
     return {
       role: "system",
-      content: sytemPrompt,
+      content: `${sytemPrompt}
+      
+      # Context
+      Today's date is ${format(new Date(), "yyyy-MM-dd")}
+      The time is ${format(new Date(), "HH:mm")}
+      `,
     };
   }
+}
+
+function cleanUpLanguage(text: string) {
+  const re = /\!language=([-a-zA-Z]+)/i;
+  const language = text.match(re)?.[1];
+  return {
+    strippedText: text.replace(re, "").trim(),
+    language,
+  };
 }

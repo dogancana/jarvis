@@ -4,10 +4,6 @@ import * as prism from "prism-media";
 import { PipelineDestination, PipelineSource, PipelineTransform } from "stream";
 import { logger } from "../platform";
 
-const K = 1000;
-const BYTE_MIN_LIMIT = 7 * K;
-const BYTE_MAX_LIMIT = 500 * K;
-
 export function createListeningStream(
   receiver: VoiceReceiver,
   userId: string,

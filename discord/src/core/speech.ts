@@ -1,30 +1,32 @@
 import {
   createAudioPlayer,
-  createAudioResource,
   NoSubscriberBehavior,
-  StreamType,
   VoiceConnection,
 } from "@discordjs/voice";
 import { textToSpeech } from "../services/deepgram";
+// import { textToSpeech } from "../services/elevenlabs";
 
 const player = createAudioPlayer({
   behaviors: {
     noSubscriber: NoSubscriberBehavior.Play,
-    maxMissedFrames: 20,
+    maxMissedFrames: 2,
   },
 });
 
-export async function talk(text: string, connection: VoiceConnection) {
-  const result = await textToSpeech(text);
-  const stream = await result?.getStream();
-
-  if (!stream) throw new Error("Failed to get speech stream");
-
-  const resource = createAudioResource(stream as any, {
-    inputType: StreamType.OggOpus,
-  });
+export async function talk(
+  text: string,
+  language: string,
+  connection: VoiceConnection,
+) {
+  const { resource, clear } = await textToSpeech(text, language);
 
   player.play(resource);
+
+  player.on("stateChange", (_, newState) => {
+    if (newState.status === "idle") {
+      clear();
+    }
+  });
 
   // player.on(AudioPlayerStatus.Playing, () => {
   //   console.log("The audio player has started playing!");
