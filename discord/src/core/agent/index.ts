@@ -3,7 +3,9 @@ import { config, logger } from "../../platform";
 import { ConversationMessage, NewCompletionEventPayload, User } from "./models";
 import { sytemPrompt } from "./system";
 import { EventBus, Publisher } from "../../utils/pub-sub";
-import { AgentEvents } from "./constants";
+import { AgentEvent } from "./constants";
+import { writeFileContent } from "../../utils/files";
+import { format } from "date-fns";
 
 interface AgentConfig {
   limit: number;
@@ -17,7 +19,10 @@ export class Agent {
   private eventBus = new EventBus();
   private publisher = new Publisher(this.eventBus);
 
-  constructor(private config?: AgentConfig) {}
+  constructor(
+    private id: string,
+    private config?: AgentConfig,
+  ) {}
 
   public addUserMessage(text: string, user: User) {
     this.conversation.push({
@@ -31,7 +36,12 @@ export class Agent {
     });
   }
 
-  public subscribe(topic: string, callback: (message: unknown) => void) {
+  public subscribe(
+    topic: AgentEvent.NewCompletion,
+    callback: (payload: NewCompletionEventPayload) => void,
+  ): void;
+
+  public subscribe(topic: AgentEvent, callback: (message: any) => void): void {
     this.eventBus.subscribe(topic, callback);
   }
 
@@ -45,6 +55,12 @@ export class Agent {
         stream: false,
       });
 
+      const tmp = format(new Date(), "YYYY-MM-dd_HH");
+      writeFileContent(
+        `./conversations/${tmp}_${this.id}.json`,
+        JSON.stringify(this.conversation, null, 2),
+      );
+
       const messageParam = response.choices[0]?.message;
       if (!messageParam) return;
       this.conversation.push({ timestamp: new Date(), messageParam });
@@ -53,7 +69,7 @@ export class Agent {
         messageParam,
         conversation: this.conversation,
       };
-      this.publisher.publish(AgentEvents.NewCompletion, payload);
+      this.publisher.publish(AgentEvent.NewCompletion, payload);
     } catch (e) {
       logger.error("Completion error", e);
       this.conversation.push({

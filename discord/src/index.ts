@@ -36,6 +36,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isCommand() || !interaction.guildId) return;
 
   const { commandName } = interaction;
+  if (commandName === commands.deploy.data.name) {
+    await deployCommands({ guildId: interaction.guildId });
+  }
+
   if (commands[commandName as keyof typeof commands]) {
     commands[commandName as keyof typeof commands].execute(interaction);
   }

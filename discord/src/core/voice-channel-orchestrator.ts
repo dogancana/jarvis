@@ -1,17 +1,12 @@
-import {
-  createAudioPlayer,
-  createAudioResource,
-  joinVoiceChannel,
-  NoSubscriberBehavior,
-  StreamType,
-  VoiceConnection,
-} from "@discordjs/voice";
+import { joinVoiceChannel, VoiceConnection } from "@discordjs/voice";
 import { Events, VoiceBasedChannel } from "discord.js";
+import { createWriteStream, unlink, WriteStream } from "node:fs";
 import { logger } from "../platform";
-import { audioFileToText, textToSpeech } from "../services/deepgram";
-import { completion } from "../services/openai";
-import { writeFileContent } from "../utils/files";
+import { audioFileToText } from "../services/deepgram";
 import { createListeningStream } from "../utils/listening";
+import { Agent } from "./agent";
+import { AgentEvent } from "./agent/constants";
+import { talk } from "./speech";
 
 interface Member {
   id: string;
@@ -19,26 +14,20 @@ interface Member {
   isBot: boolean;
 }
 
-const player = createAudioPlayer({
-  behaviors: {
-    noSubscriber: NoSubscriberBehavior.Play,
-    maxMissedFrames: 20,
-  },
-});
-
-interface ConversationMessage {
-  text: string;
-  user: Member;
-  timestamp: number;
+interface ListeningTo {
+  stream: NodeJS.WritableStream;
+  filename: string;
 }
 
+const K = 1000;
+const BYTE_MIN_LIMIT = 7 * K;
 export class VoiceChannelOrchestrator {
   private connection: VoiceConnection;
   private listening = false;
-  private listeningTo = new Set<string>();
-  private conversation: ConversationMessage[] = [];
+  private listeningTo = new Map<string, ListeningTo>();
   private completionInProgress = false;
   private members: Member[] = [];
+  private agent: Agent;
 
   constructor(private channel: VoiceBasedChannel) {
     this.connection = joinVoiceChannel({
@@ -51,6 +40,9 @@ export class VoiceChannelOrchestrator {
     process.on("SIGINT", () => this.destroy());
     process.on("SIGTERM", () => this.destroy());
 
+    this.agent = new Agent(`${channel.guildId}_${channel.id}`);
+
+    this.subscribeToAgent();
     this.subscribeToChannelState();
   }
 
@@ -62,25 +54,25 @@ export class VoiceChannelOrchestrator {
       const receiver = this.connection.receiver;
 
       receiver.speaking.on("start", async (userId) => {
+        logger.info("User started speaking", {
+          userId,
+          listeningTo: !!this.listeningTo.get(userId),
+        });
+
         if (this.listeningTo.has(userId)) return;
-        this.listeningTo.add(userId);
+        const filename = `./recordings/${Date.now()}-${this.channel.guildId}_${userId}.ogg`;
+        const out = createWriteStream(filename);
+
+        out.on("finish", async (error?: unknown) => {
+          this.onRecordingEnd(filename, out, userId, error);
+        });
+
         try {
-          const filename = await createListeningStream(
-            receiver,
-            this.channel.guildId,
-            userId,
-          );
-          if (!filename) return;
-
-          await this.addConversationMessage(filename, userId);
-          await this.completionCycle();
+          const stream = createListeningStream(receiver, userId, out);
+          this.listeningTo.set(userId, { filename, stream });
         } catch (e) {
-          console.error(e);
+          logger.error("Error starting listening stream", e);
         }
-      });
-
-      receiver.speaking.on("end", (userId) => {
-        this.listeningTo.delete(userId);
       });
 
       this.connection.on("stateChange", async (_, newState) => {
@@ -92,24 +84,50 @@ export class VoiceChannelOrchestrator {
     }
   }
 
-  private async addConversationMessage(filename: string, user: string) {
+  private async onRecordingEnd(
+    filename: string,
+    self: WriteStream,
+    userId: string,
+    error?: unknown,
+  ) {
+    logger.info("Finished writing audio file", { filename, error });
+
+    if (self.bytesWritten < BYTE_MIN_LIMIT) {
+      logger.info("Audio file too short", { filename });
+    } else {
+      await this.addConversationMessage(filename, userId);
+      await this.completionCycle();
+    }
+
+    unlink(filename, (error) => {
+      if (error) logger.error("Error deleting audio file", { filename, error });
+    });
+
+    const listeningTo = this.listeningTo.get(userId);
+    if (!listeningTo) return;
+    listeningTo.stream.end();
+    this.listeningTo.delete(userId);
+  }
+
+  private async addConversationMessage(filename: string, userId: string) {
     const { results } = await audioFileToText(filename);
     const transcript = results.channels?.[0]?.alternatives?.[0]?.transcript;
     if (!transcript) return;
 
-    const userObj = this.members.find((member) => member.id === user);
-    const message: ConversationMessage = {
-      text: transcript,
-      user: userObj ?? { id: user, name: "Unknown", isBot: false },
-      timestamp: Date.now(),
-    };
-    logger.info("Adding conversation message", { message: message.text });
-    this.conversation.push(message);
+    const user = this.members.find((member) => member.id === userId);
+    if (!user) {
+      logger.error("No user data while processing recording", {
+        filename,
+        userId,
+      });
+      return;
+    }
 
-    writeFileContent(
-      `./conversations/${this.channel.guildId}-${this.channel.id}.json`,
-      JSON.stringify(this.conversation, null, 2),
-    );
+    this.agent.addUserMessage(transcript, {
+      id: user.id,
+      name: user.name,
+      isBot: false,
+    });
   }
 
   private async completionCycle() {
@@ -117,54 +135,23 @@ export class VoiceChannelOrchestrator {
     this.completionInProgress = true;
 
     try {
-      const messages = this.conversation.map((message) => message.text);
-      const response = await completion(messages);
-      if (!response) return;
-
-      const result = await textToSpeech(response);
-      if (!result) return;
-
-      logger.info("Talking", { response });
-      await this.talk(response);
+      await this.agent.completion();
     } catch (e) {
-      console.error(e);
       logger.error(e);
     } finally {
       this.completionInProgress = false;
     }
   }
 
-  private async talk(text: string) {
-    try {
-      const result = await textToSpeech(text);
-      if (!result) return;
+  private subscribeToAgent() {
+    this.agent.subscribe(AgentEvent.NewCompletion, async (payload) => {
+      const { messageParam } = payload;
+      const text = messageParam?.content;
+      if (!text) return;
 
-      const stream = await result.getStream();
-
-      const resource = createAudioResource(stream, {
-        inputType: StreamType.OggOpus,
-      });
-
-      player.play(resource);
-
-      this.connection.subscribe(player);
-
-      // player.on(AudioPlayerStatus.Playing, () => {
-      //   console.log("The audio player has started playing!");
-      // });
-
-      // player.on(AudioPlayerStatus.Idle, () => {
-      //   console.log("The audio player is idle.");
-      //   player.stop(); // Stop the player after the stream ends
-      // });
-
-      // player.on("error", (error) => {
-      //   console.error("Error:", error.message);
-      // });
-    } catch (e) {
-      console.error(e);
-      logger.error(e);
-    }
+      logger.info("Talking", { text });
+      talk(text, this.connection);
+    });
   }
 
   private subscribeToChannelState() {

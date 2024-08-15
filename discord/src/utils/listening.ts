@@ -1,20 +1,21 @@
 import { EndBehaviorType, VoiceReceiver } from "@discordjs/voice";
-import fs from "fs";
-import { createWriteStream } from "node:fs";
 import { pipeline, Writable } from "node:stream";
 import * as prism from "prism-media";
+import { PipelineDestination, PipelineSource, PipelineTransform } from "stream";
+import { logger } from "../platform";
 
-const BYTE_MIN_LIMIT = 7000;
-const BYTE_MAX_LIMIT = 200000;
+const K = 1000;
+const BYTE_MIN_LIMIT = 7 * K;
+const BYTE_MAX_LIMIT = 500 * K;
 
 export function createListeningStream(
   receiver: VoiceReceiver,
-  guildId: string,
   userId: string,
+  out: Writable,
 ) {
   const opusStream = receiver.subscribe(userId, {
     end: {
-      behavior: EndBehaviorType.AfterSilence,
+      behavior: EndBehaviorType.AfterInactivity,
       duration: 1000,
     },
   });
@@ -27,38 +28,15 @@ export function createListeningStream(
     pageSizeControl: { maxPackets: 10 },
   });
 
-  const filename = `./recordings/${Date.now()}-${guildId}_${userId}.ogg`;
-  const out = createWriteStream(filename);
+  const source: PipelineSource<unknown> = opusStream;
+  const transform: PipelineTransform<any, any> = oggStream as any;
+  const destination: PipelineDestination<any, any> = out as any;
 
-  // Custom writable stream to monitor bytes written
-  const byteLimiterStream = new Writable({
-    write(chunk, encoding, callback) {
-      if (out.bytesWritten + chunk.length > BYTE_MAX_LIMIT) {
-        this.end(() => callback(new Error("Maximum byte limit reached")));
-      } else {
-        out.write(chunk, encoding, callback);
-      }
-    },
-    final(callback) {
-      out.end(callback);
-    },
-  });
+  return pipeline(source, transform, destination, (error: unknown) => {
+    if (error) logger.error(error);
 
-  return new Promise<string | undefined>((resolve, reject) => {
-    pipeline(
-      opusStream,
-      oggStream as any,
-      byteLimiterStream as any,
-      (error: unknown) => {
-        if (error) return reject(error);
-
-        if (out.bytesWritten < BYTE_MIN_LIMIT) {
-          fs.unlink(filename, () => {});
-          resolve(undefined);
-        } else {
-          resolve(filename);
-        }
-      },
-    );
+    if (!opusStream.destroyed) opusStream.destroy();
+    if (!oggStream.destroyed) oggStream.destroy();
+    if (!out.destroyed) out.destroy();
   });
 }

@@ -1,3 +1,3 @@
-export const AgentEvents = {
-  NewCompletion: "new-completion",
-} as const;
+export enum AgentEvent {
+  NewCompletion = "new-completion",
+}

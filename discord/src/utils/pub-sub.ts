@@ -1,4 +1,4 @@
-type Callback = (message: unknown) => void;
+type Callback = (message: any) => void;
 
 export class EventBus {
   private topics: Map<string, Callback[]> = new Map();
@@ -18,7 +18,7 @@ export class EventBus {
     );
   }
 
-  public publish(topic: string, message: unknown): void {
+  public publish(topic: string, message: any): void {
     const subscribers = this.topics.get(topic);
     if (!subscribers) return;
 
@@ -31,7 +31,7 @@ export class Publisher {
     this.eventBus = eventBus;
   }
 
-  public publish(topic: string, message: unknown): void {
+  public publish(topic: string, message: any): void {
     this.eventBus.publish(topic, message);
   }
 }
@@ -39,13 +39,13 @@ export class Publisher {
 export class Subscriber {
   constructor(private eventBus: EventBus) {}
 
-  public subscribe(topic: string, callback: (message: unknown) => void): void {
+  public subscribe(topic: string, callback: (message: any) => void): void {
     this.eventBus.subscribe(topic, callback);
   }
 
   public unsubscribe(
     topic: string,
-    callback: (message: unknown) => void,
+    callback: (message: any) => void,
   ): void {
     this.eventBus.unsubscribe(topic, callback);
   }
