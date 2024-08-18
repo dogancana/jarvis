@@ -1,4 +1,9 @@
-import { joinVoiceChannel, VoiceConnection } from "@discordjs/voice";
+import {
+  createAudioPlayer,
+  joinVoiceChannel,
+  NoSubscriberBehavior,
+  VoiceConnection,
+} from "@discordjs/voice";
 import { Events, VoiceBasedChannel } from "discord.js";
 import { createWriteStream, unlink, WriteStream } from "node:fs";
 import { logger } from "../platform";
@@ -6,6 +11,7 @@ import { audioFileToText } from "../services/deepgram";
 import { createListeningStream } from "../utils/listening";
 import { Agent } from "./agent";
 import { AgentEvent } from "./agent/constants";
+import { MusicFunction, VoiceChannelManagementFunction } from "./agent/tools";
 import { talk } from "./speech";
 
 interface Member {
@@ -28,6 +34,14 @@ export class VoiceChannelOrchestrator {
   private completionInProgress = false;
   private members: Member[] = [];
   private agent: Agent;
+  private player = createAudioPlayer({
+    behaviors: {
+      noSubscriber: NoSubscriberBehavior.Play,
+      maxMissedFrames: 2,
+    },
+  });
+  private musicTool: MusicFunction;
+  private channelTool: VoiceChannelManagementFunction;
 
   constructor(private channel: VoiceBasedChannel) {
     this.connection = joinVoiceChannel({
@@ -40,7 +54,12 @@ export class VoiceChannelOrchestrator {
     process.on("SIGINT", () => this.destroy());
     process.on("SIGTERM", () => this.destroy());
 
-    this.agent = new Agent(`${channel.guildId}_${channel.id}`);
+    this.musicTool = new MusicFunction(this.connection, this.player);
+    this.channelTool = new VoiceChannelManagementFunction(channel);
+    this.agent = new Agent(`${channel.guildId}_${channel.id}`, [
+      // this.musicTool,
+      this.channelTool,
+    ]);
 
     this.subscribeToAgent();
     this.subscribeToChannelState();
@@ -154,7 +173,7 @@ export class VoiceChannelOrchestrator {
       if (!text) return;
 
       logger.info("Talking", { text, language });
-      talk(text, language ?? "en-US", this.connection);
+      talk(text, language ?? "en-US", this.connection, this.player);
     });
   }
 

@@ -1,11 +1,13 @@
+import { format } from "date-fns";
 import OpenAI from "openai";
 import { config, logger } from "../../platform";
-import { ConversationMessage, NewCompletionEventPayload, User } from "./models";
-import { sytemPrompt } from "./system";
+import { writeFileContent } from "../../utils/files";
 import { EventBus, Publisher } from "../../utils/pub-sub";
 import { AgentEvent } from "./constants";
-import { writeFileContent } from "../../utils/files";
-import { format } from "date-fns";
+import { ConversationMessage, NewCompletionEventPayload, User } from "./models";
+import { sytemPrompt } from "./system";
+import { Tool } from "./tools";
+import { pick } from "lodash";
 
 interface AgentConfig {
   limit: number;
@@ -21,6 +23,7 @@ export class Agent {
 
   constructor(
     private id: string,
+    private functions: Tool[],
     private config?: AgentConfig,
   ) {}
 
@@ -49,10 +52,14 @@ export class Agent {
     try {
       const response = await openai.chat.completions.create({
         model,
-        messages: this.prepareConversation(),
+        messages: await this.prepareConversation(),
         temperature: 0.5,
         max_tokens: 1000,
         stream: false,
+        tools: this.functions.map((f) => ({
+          type: "function",
+          function: pick(f, ["name", "parameters", "description"]),
+        })),
       });
 
       const tmp = format(new Date(), "yyyy-MM-dd_HH");
@@ -61,7 +68,10 @@ export class Agent {
         JSON.stringify(this.conversation, null, 2),
       );
 
-      const messageParam = response.choices[0]?.message;
+      const choice = response.choices[0];
+      if (!choice) throw new Error("No response from OpenAI");
+
+      const messageParam = choice?.message;
       if (!messageParam) return;
       this.conversation.push({ timestamp: new Date(), messageParam });
 
@@ -69,6 +79,9 @@ export class Agent {
         logger.info("Silent response");
         return;
       }
+
+      if (choice.message.tool_calls)
+        return this.executeToolCalls(choice.message.tool_calls);
 
       const { strippedText, language } = cleanUpLanguage(
         messageParam.content ?? "",
@@ -95,15 +108,51 @@ export class Agent {
     }
   }
 
-  private prepareConversation() {
+  private executeToolCalls(calls: OpenAI.ChatCompletionMessageToolCall[]) {
+    calls
+      .map((c) => ({ ...c.function, id: c.id }))
+      .forEach(async (call) => {
+        try {
+          const tool = this.functions.find((f) => f.name === call.name);
+          if (!tool) return;
+
+          const params = JSON.parse(call.arguments);
+          const result = await tool.function(params);
+          this.sendToolResponse(call.id, result);
+        } catch (e) {
+          this.sendToolResponse(
+            call.id,
+            "There was a problem executing the tool.",
+          );
+        } finally {
+          this.completion();
+        }
+      });
+  }
+
+  private sendToolResponse(id: string, response: string) {
+    this.conversation.push({
+      timestamp: new Date(),
+      messageParam: {
+        role: "tool",
+        tool_call_id: id,
+        content: response,
+      },
+    });
+  }
+
+  private async prepareConversation() {
     const limit = Math.min(this.config?.limit ?? 50, 200);
     return [
-      this.getSystemPrompt(),
+      await this.getSystemPrompt(),
       ...this.conversation.slice(-limit).map((message) => message.messageParam),
     ];
   }
 
-  private getSystemPrompt(): OpenAI.ChatCompletionSystemMessageParam {
+  private async getSystemPrompt(): Promise<OpenAI.ChatCompletionSystemMessageParam> {
+    const toolContext = (
+      await Promise.all(this.functions.map((f) => f.context()))
+    ).join("\n");
     return {
       role: "system",
       content: `${sytemPrompt}
@@ -111,6 +160,7 @@ export class Agent {
       # Context
       Today's date is ${format(new Date(), "yyyy-MM-dd")}
       The time is ${format(new Date(), "HH:mm")}
+      ${toolContext}
       `,
     };
   }

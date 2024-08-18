@@ -5,6 +5,7 @@ export const config = {
   DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY ?? "",
   OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "",
   ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
+  YOUTUBE_API_KEY: process.env.YOUTUBE_API_KEY ?? "",
 } as const;
 
 validate();

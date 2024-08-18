@@ -1,22 +1,12 @@
-import {
-  createAudioPlayer,
-  NoSubscriberBehavior,
-  VoiceConnection,
-} from "@discordjs/voice";
+import { AudioPlayer, VoiceConnection } from "@discordjs/voice";
 import { textToSpeech } from "../services/deepgram";
 // import { textToSpeech } from "../services/elevenlabs";
-
-const player = createAudioPlayer({
-  behaviors: {
-    noSubscriber: NoSubscriberBehavior.Play,
-    maxMissedFrames: 2,
-  },
-});
 
 export async function talk(
   text: string,
   language: string,
   connection: VoiceConnection,
+  player: AudioPlayer,
 ) {
   const { resource, clear } = await textToSpeech(text, language);
 

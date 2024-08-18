@@ -1,5 +1,4 @@
 import OpenAI from "openai";
-import { ChatCompletionUserMessageParam } from "openai/resources";
 import { config } from "../platform";
 
 const model = "gpt-4o-mini";
@@ -24,13 +23,10 @@ export async function completion(messages: string[]) {
        Your answers are short and to the point.
       `,
       },
-      ...messages.map(
-        (content) =>
-          ({
-            role: "user",
-            content,
-          }) as ChatCompletionUserMessageParam,
-      ),
+      ...messages.map((content) => ({
+        role: "user" as "user",
+        content,
+      })),
     ],
     temperature: 0,
     max_tokens: 1000,
