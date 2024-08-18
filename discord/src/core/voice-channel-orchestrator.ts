@@ -11,7 +11,11 @@ import { audioFileToText } from "../services/deepgram";
 import { createListeningStream } from "../utils/listening";
 import { Agent } from "./agent";
 import { AgentEvent } from "./agent/constants";
-import { MusicFunction, VoiceChannelManagementFunction } from "./agent/tools";
+import {
+  MusicFunction,
+  VoiceChannelManagementFunction,
+  WebSearchFunction,
+} from "./agent/tools";
 import { talk } from "./speech";
 
 interface Member {
@@ -59,6 +63,7 @@ export class VoiceChannelOrchestrator {
     this.agent = new Agent(`${channel.guildId}_${channel.id}`, [
       // this.musicTool,
       this.channelTool,
+      new WebSearchFunction(),
     ]);
 
     this.subscribeToAgent();

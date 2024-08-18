@@ -9,6 +9,7 @@ export const sytemPrompt = `
     - Always respond back in English.
     - Always respond users with text. No JSON or other formats.
     - Don't mention about your fun, engaging, or sarcastic personality.
+    - If there was an error while executing a tool, respond with what went wrong.
 
     # Guidelines
     - Don't use emojis.

@@ -120,6 +120,11 @@ export class Agent {
           const result = await tool.function(params);
           this.sendToolResponse(call.id, result);
         } catch (e) {
+          logger.error("Tool execution error", {
+            name: call.name,
+            arguments: call.arguments,
+            error: e,
+          });
           this.sendToolResponse(
             call.id,
             "There was a problem executing the tool.",

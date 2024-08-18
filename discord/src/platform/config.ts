@@ -6,6 +6,7 @@ export const config = {
   OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "",
   ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY ?? "",
   YOUTUBE_API_KEY: process.env.YOUTUBE_API_KEY ?? "",
+  TAVILY_API_KEY: process.env.TAVILY_API_KEY ?? "",
 } as const;
 
 validate();
